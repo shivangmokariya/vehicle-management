@@ -182,17 +182,19 @@ export default function Users() {
   }
 
   const handleEdit = (user) => {
-    setEditingUser(user)
+    setEditingUser(user);
+    // Map user's group array to react-select format
+    const groupValue = (user.group || []).map(g => ({ value: g, label: g }));
     reset({
       fullName: user.fullName,
       username: user.username,
       mobileNo: user.mobileNo,
       role: user.role,
-      group: user.group,
+      group: groupValue,
       iCard: user.iCard,
-    })
-    setIsModalOpen(true)
-  }
+    });
+    setIsModalOpen(true);
+  };
 
   const handleView = (user) => {
     setViewingUser(user)

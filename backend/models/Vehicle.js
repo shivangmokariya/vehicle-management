@@ -95,7 +95,36 @@ const vehicleSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
-  }
+  },
+  batchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Batch',
+    required: true
+  },
+  state: { type: String, trim: true },
+  city: { type: String, trim: true },
+  fileNo: { type: String, trim: true },
+  loanAgreementNo: { type: String, trim: true },
+  nameOfClient: { type: String, trim: true },
+  vehicleType: { type: String, trim: true },
+  make: { type: String, trim: true },
+  model: { type: String, trim: true },
+  year: { type: String, trim: true },
+  regNo: { type: String, trim: true },
+  month: { type: String, trim: true },
+  emi: { type: String, trim: true },
+  pos: { type: String, trim: true },
+  tos: { type: String, trim: true },
+  fcAmt: { type: String, trim: true },
+  loanAmount: { type: String, trim: true },
+  dpd: { type: String, trim: true },
+  customerAddress: { type: String, trim: true },
+  customerMobileNumber: { type: String, trim: true },
+  groupAccountCount: { type: String, trim: true },
+  contactPerson1: { type: String, trim: true },
+  mobileNumber1: { type: String, trim: true },
+  contactPerson2: { type: String, trim: true },
+  mobileNumber2: { type: String, trim: true },
 }, {
   timestamps: true
 });
