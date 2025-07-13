@@ -19,7 +19,6 @@ export const AuthProvider = ({ children }) => {
 
   // Check if token exists in localStorage
   const token = localStorage.getItem('token')
-  // console.log('AuthContext: token in localStorage:', token)
 
   // Initial auth check only if token exists
   useQuery(
@@ -30,17 +29,14 @@ export const AuthProvider = ({ children }) => {
       retry: false,
       refetchOnWindowFocus: false,
       onError: (error) => {
-        // console.log('AuthContext: /api/auth/me error:', error)
         if (error?.response) {
-          // console.log('Status:', error.response.status)
-          // console.log('Data:', error.response.data)
+          // Handle error silently
         }
         localStorage.removeItem('token')
         setUser(null)
         setLoading(false) // Only set to false after first check
       },
       onSuccess: (data) => {
-        // console.log('AuthContext: /api/auth/me success:', data)
         setUser(data.data)
         setLoading(false) // Only set to false after first check
       }
@@ -79,8 +75,6 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
   }
-
-  // console.log('AuthProvider value:', value)
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 } 

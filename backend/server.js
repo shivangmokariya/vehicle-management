@@ -21,17 +21,13 @@ const { seedSuperAdmin } = require('./utils/seeder');
 
 const app = express();
 
-// Middleware
+// Memory optimization settings
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '10mb' })); // Reduced from 50mb
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Reduced from 50mb
 
 // Add request size logging middleware
 app.use((req, res, next) => {
-  const contentLength = req.headers['content-length'];
-  if (contentLength) {
-    // console.log(`Request size: ${(parseInt(contentLength) / 1024 / 1024).toFixed(2)} MB`);
-  }
   next();
 });
 
@@ -52,14 +48,28 @@ app.get('/api/health', (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
-// Connect to MongoDB
+// Global error logging for uncaught exceptions and unhandled rejections
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+// Connect to MongoDB with optimized settings
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  maxPoolSize: 10, // Limit connection pool
+  serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+  socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+  // bufferMaxEntries: 0, // Disable mongoose buffering
+  bufferCommands: false, // Disable mongoose buffering
 })
 .then(async () => {
-  console.log('Connected to MongoDB');
-  
   // Seed super admin on first run
   await seedSuperAdmin();
 })
@@ -71,5 +81,5 @@ mongoose.connect(process.env.MONGODB_URI, {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server started on port ${PORT}`);
 }); 

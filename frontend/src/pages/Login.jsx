@@ -24,7 +24,7 @@ export default function Login() {
         navigate('/')
       }
     } catch (error) {
-      console.error('Login error:', error)
+      // Handle login error silently
     } finally {
       setIsLoading(false)
     }

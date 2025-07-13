@@ -6,7 +6,6 @@ const seedSuperAdmin = async () => {
     const existingSuperAdmin = await User.findOne({ role: 'Super Admin' });
     
     if (existingSuperAdmin) {
-      console.log('Super Admin already exists');
       return;
     }
 
@@ -22,14 +21,9 @@ const seedSuperAdmin = async () => {
     });
 
     await superAdmin.save();
-    console.log('Super Admin created successfully');
-    console.log('Default credentials:');
-    console.log('Username: superadmin');
-    console.log('Password: admin123');
-    console.log('Please change these credentials after first login!');
 
   } catch (error) {
-    console.error('Error seeding Super Admin:', error);
+    // Error seeding Super Admin
   }
 };
 

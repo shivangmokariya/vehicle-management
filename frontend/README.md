@@ -199,9 +199,19 @@ The application is fully responsive with:
 ## Environment Variables
 
 Create a `.env` file for environment-specific configuration:
+
+### Production (Default)
 ```env
-VITE_API_URL=http://localhost:5000/api
+VITE_API_BASE_URL=https://vehicle-management-z4pv.onrender.com
 ```
+
+### Local Development
+Create a `.env.local` file to override the production URL:
+```env
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+**Note**: The `.env.local` file takes precedence over `.env` and is ignored by git for security.
 
 ## Browser Support
 

@@ -154,7 +154,7 @@ export default function Vehicles() {
       limit: 15
     }).then(res => res.data)
   )
-// console.log(vehiclesData,"<<<<<<vehiclesData")
+  
   const uploadMutation = useMutation(vehiclesAPI.uploadVehicleData, {
     onSuccess: (data) => {
       queryClient.invalidateQueries('vehicles')
@@ -350,9 +350,6 @@ export default function Vehicles() {
     setUploadProgress(null)
   }
 
-  // Add debug log before return
-  // console.log('BATCHES STATE:', batches);
-
   // Handler for filter changes inside a batch
   const handleBatchFilterChange = (batchId, field, value) => {
     setBatchFilters(prev => ({
@@ -400,7 +397,6 @@ export default function Vehicles() {
         if (cur.score > acc.score) return cur;
         return acc;
       }, { score: 0 });
-      // console.log('Batch search debug:', batchResults, 'Best:', best);
       if (best && best.score > 0) {
         setExpandedBatch(best.batchId);
         setBatchVehicles(prev => ({ ...prev, [best.batchId]: best.vehicles }));

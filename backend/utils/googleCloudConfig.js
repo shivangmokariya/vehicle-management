@@ -32,7 +32,6 @@ function initializeGoogleCloudStorage() {
     });
     return storage;
   } catch (error) {
-    console.error('Error initializing Google Cloud Storage:', error.message);
     throw error;
   }
 }

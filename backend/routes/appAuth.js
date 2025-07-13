@@ -55,7 +55,6 @@ router.post(
         user: user.toPublicJSON(),
       });
     } catch (error) {
-      console.error('App Login error:', error);
       res.status(500).json({ success: false, message: 'Server error' });
     }
   }

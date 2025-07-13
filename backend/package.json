@@ -4,8 +4,8 @@
   "description": "MERN Admin Panel Backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node --max-old-space-size=4096 server.js",
+    "dev": "nodemon --max-old-space-size=4096 server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

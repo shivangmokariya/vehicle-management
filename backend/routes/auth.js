@@ -74,7 +74,6 @@ router.post('/login', [
     });
 
   } catch (error) {
-    console.error('Login error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -92,7 +91,6 @@ router.get('/me', auth, async (req, res) => {
       user: req.user
     });
   } catch (error) {
-    console.error('Get profile error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 

@@ -169,7 +169,7 @@ export default function Users() {
             formData 
           });
         } catch (imgErr) {
-          console.error('Profile image upload failed:', imgErr);
+          // Profile image upload failed silently
         }
       }
 
@@ -177,7 +177,7 @@ export default function Users() {
       setProfileImagePreview(null);
       reset();
     } catch (error) {
-      console.error('User creation or image upload error:', error);
+      // User creation or image upload error handled silently
     }
   }
 

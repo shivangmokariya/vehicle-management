@@ -66,9 +66,6 @@ const gdriveCredentials = {
 
 // Fail fast if required vars are missing
 if (!gdriveCredentials.private_key || !gdriveCredentials.client_email) {
-  console.error(
-    '❌  Google Drive env vars are missing. Check your .env file.'
-  );
   process.exit(1);
 }
 
@@ -78,10 +75,6 @@ const authGoogle = new google.auth.GoogleAuth({
 });
 
 const drive = google.drive({ version: 'v3', auth: authGoogle });
-
-// console.log('✅  Google Drive setup completed with env credentials');
-
-// console.log('Google Drive setup completed successfully');
 
 // Helper function to upload file to Google Drive
 const uploadToGoogleDrive = async (filePath, originalName) => {
@@ -108,15 +101,11 @@ const uploadToGoogleDrive = async (filePath, originalName) => {
       body: fs.createReadStream(filePath),
     };
     
-    // console.log('Uploading to Google Drive:', { filePath, originalName, mimeType });
-    
     const response = await drive.files.create({
       resource: fileMetadata,
       media: media,
       fields: 'id',
     });
-    
-    // console.log('Google Drive upload response:', response.data);
     
     // Make file public
     await drive.permissions.create({
@@ -126,7 +115,6 @@ const uploadToGoogleDrive = async (filePath, originalName) => {
     
     return `https://drive.google.com/uc?id=${response.data.id}`;
   } catch (error) {
-    console.error('Google Drive upload error:', error);
     throw new Error(`Failed to upload to Google Drive: ${error.message}`);
   }
 };
@@ -135,22 +123,16 @@ const uploadToGoogleDrive = async (filePath, originalName) => {
 const deleteFromGoogleDrive = async (fileUrl) => {
   try {
     if (!fileUrl || !fileUrl.includes('drive.google.com')) {
-      console.log('Invalid Google Drive URL for deletion:', fileUrl);
       return;
     }
     
     const fileId = fileUrl.match(/id=([^&]+)/)?.[1];
     if (fileId) {
-      console.log('Deleting file from Google Drive:', fileId);
       await drive.files.delete({
         fileId: fileId,
       });
-      console.log('File deleted successfully from Google Drive');
-    } else {
-      console.log('Could not extract file ID from URL:', fileUrl);
     }
   } catch (error) {
-    console.error('Google Drive delete error:', error);
     // Don't throw error for delete operations
   }
 };
@@ -229,7 +211,6 @@ router.post('/', [
     });
 
   } catch (error) {
-    console.error('Create user error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -274,7 +255,6 @@ router.get('/', [auth, requireSuperAdmin], async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get users error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -304,7 +284,6 @@ router.get('/:id', [auth, requireSuperAdmin], async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get user error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -366,7 +345,6 @@ router.put('/:id', [
     });
 
   } catch (error) {
-    console.error('Update user error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -409,7 +387,6 @@ router.patch('/:id/status', [
     });
 
   } catch (error) {
-    console.error('Update status error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -443,7 +420,6 @@ router.delete('/:id', [auth, requireSuperAdmin], async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Delete user error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -458,10 +434,7 @@ router.post('/:id/profile-image', [auth, requireSuperAdmin, upload.single('profi
   let tempFilePath = null;
   
   try {
-    console.log('Profile image upload request received');
-    
     if (!req.file) {
-      console.log('No file received in request');
       return res.status(400).json({
         success: false,
         message: 'Please upload an image file'
@@ -469,51 +442,39 @@ router.post('/:id/profile-image', [auth, requireSuperAdmin, upload.single('profi
     }
 
     tempFilePath = req.file.path;
-    console.log('Temporary file path:', tempFilePath);
 
     const user = await User.findById(req.params.id);
     if (!user) {
-      console.log('User not found:', req.params.id);
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
 
-    console.log('User found:', user.fullName);
-
     // Verify the temporary file exists
     if (!fs.existsSync(tempFilePath)) {
-      console.log('Temporary file does not exist:', tempFilePath);
       return res.status(500).json({
         success: false,
         message: 'Uploaded file not found'
       });
     }
 
-    console.log('Temporary file exists, size:', fs.statSync(tempFilePath).size);
-
     // Delete old profile image from Google Drive if exists
     if (user.profileImage) {
-      console.log('Deleting old profile image:', user.profileImage);
       await deleteFromGoogleDrive(user.profileImage);
     }
 
     // Upload new image to Google Drive
-    console.log('Starting Google Drive upload...');
     const googleDriveUrl = await uploadToGoogleDrive(tempFilePath, req.file.originalname);
-    console.log('Google Drive upload successful, URL:', googleDriveUrl);
     
     // Clean up temporary file
     if (fs.existsSync(tempFilePath)) {
       fs.unlinkSync(tempFilePath);
-      console.log('Temporary file cleaned up');
     }
 
     // Update user with new profile image URL
     user.profileImage = googleDriveUrl;
     await user.save();
-    console.log('User profile image updated in database');
 
     res.json({
       success: true,
@@ -522,15 +483,12 @@ router.post('/:id/profile-image', [auth, requireSuperAdmin, upload.single('profi
     });
 
   } catch (error) {
-    console.error('Upload profile image error:', error);
-    
     // Clean up temporary file if upload failed
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
-        console.log('Temporary file cleaned up after error');
       } catch (cleanupError) {
-        console.error('Error cleaning up temp file:', cleanupError);
+        // Ignore cleanup errors
       }
     }
     
@@ -574,7 +532,6 @@ router.delete('/:id/profile-image', [auth, requireSuperAdmin], async (req, res) 
     });
 
   } catch (error) {
-    console.error('Delete profile image error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error' 
@@ -601,7 +558,6 @@ router.get('/dashboard/summary', [auth, requireSuperAdmin], async (req, res) => 
       totalAreas
     });
   } catch (error) {
-    console.error('Dashboard summary error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });

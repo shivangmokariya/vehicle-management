@@ -48,53 +48,79 @@ const upload = multer({
 // Helper function to parse Excel file
 const parseExcelFile = (filePath) => {
   try {
-    const workbook   = xlsx.readFile(filePath);
-    const sheetName  = workbook.SheetNames[0];
-    const worksheet  = workbook.Sheets[sheetName];
-    const rows       = xlsx.utils.sheet_to_json(worksheet);
+    const workbook = xlsx.readFile(filePath, { 
+      cellDates: true,
+      cellNF: false,
+      cellText: false,
+      cellStyles: false
+    });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = xlsx.utils.sheet_to_json(worksheet, { 
+      header: 1,
+      defval: '',
+      blankrows: false
+    });
 
-    return rows.map(row => ({
-      state: row['State'] || '',
-      branch: row['Branch'] || '',
-      city: row['City'] || '',
-      fileNo: row['File No'] || row['FileNo'] || '',
-      loanAgreementNo: row['loan_agreement_no'] || row['Loan Agreement No'] || '',
-      nameOfClient: row['Name Of Client'] || row['Name of Client'] || '',
-      vehicleType: row['Vehicle Type'] || '',
-      make: row['Make'] || '',
-      model: row['Model'] || '',
-      year: row['Year'] || '',
-      regNo: row['Reg No'] || row['RegNo'] || '',
-      engineNo: row['Engine No'] || row['EngineNo'] || '',
-      chassisNo: row['Chasis No'] || row['Chassis No'] || row['ChassisNo'] || '',
-      month: row['Month'] || '',
-      bkt: row['Bkt'] || row['bkt'] || '',
-      emi: row['EMI'] || '',
-      pos: row['Pos'] || '',
-      tos: row['Tos'] || '',
-      fcAmt: row['FC Amt'] || '',
-      loanAmount: row['loan_amount'] || row['Loan Amount'] || '',
-      dpd: row['dpd'] || '',
-      customerAddress: row['customer_address'] || '',
-      customerMobileNumber: row['Customer Mobile Number'] || '',
-      groupAccountCount: row['Group Account Count'] || '',
-      contactPerson1: row['Cont. Person1'] || row['Contact Person1'] || '',
-      mobileNumber1: row['Mobile number'] || row['Mobile Number'] || row['Mobile number1'] || '',
-      contactPerson2: row['Cont. Person2'] || row['Contact Person2'] || '',
-      mobileNumber2: row['Mobile number2'] || '',
-      // legacy/required fields for compatibility
-      vehicleNo: row['vehicleNo'] || row['Vehicle No'] || row['VehicleNo'] || row['Vehicle No.'] || row['Reg No'] || row['RegNo'] || '',
-      customerName: row['customerName'] || row['Customer Name'] || row['Name Of Client'] || row['Name of Client'] || '',
-      area: row['area'] || row['Area'] || row['City'] || '',
-      vehicleMaker: row['vehicleMaker'] || row['Vehicle Maker'] || row['Make'] || '',
-      companyName: row['companyName'] || row['Company Name'] || '',
-      companyBranch: row['companyBranch'] || row['Company Branch'] || '',
-      companyContact: row['companyContact'] || row['Company Contact'] || '',
-      companyContactPerson: row['companyContactPerson'] || row['Company Contact Person'] || '',
-      agencyName: row['agencyName'] || row['Agency Name'] || '',
-      agencyContact: row['agencyContact'] || row['Agency Contact'] || '',
-      group: row['group'] || row['Group'] ? String(row['group'] || row['Group']).split(',')[0].trim() : '',
-    }));
+    // Process rows in chunks to avoid memory issues
+    const processedRows = [];
+    const CHUNK_SIZE = 1000;
+    
+    for (let i = 1; i < rows.length; i += CHUNK_SIZE) { // Skip header row
+      const chunk = rows.slice(i, Math.min(i + CHUNK_SIZE, rows.length));
+      
+      const processedChunk = chunk.map(row => ({
+        state: row[0] || '',
+        branch: row[1] || '',
+        city: row[2] || '',
+        fileNo: row[3] || '',
+        loanAgreementNo: row[4] || '',
+        nameOfClient: row[5] || '',
+        vehicleType: row[6] || '',
+        make: row[7] || '',
+        model: row[8] || '',
+        year: row[9] || '',
+        regNo: row[10] || '',
+        engineNo: row[11] || '',
+        chassisNo: row[12] || '',
+        month: row[13] || '',
+        bkt: row[14] || '',
+        emi: row[15] || '',
+        pos: row[16] || '',
+        tos: row[17] || '',
+        fcAmt: row[18] || '',
+        loanAmount: row[19] || '',
+        dpd: row[20] || '',
+        customerAddress: row[21] || '',
+        customerMobileNumber: row[22] || '',
+        groupAccountCount: row[23] || '',
+        contactPerson1: row[24] || '',
+        mobileNumber1: row[25] || '',
+        contactPerson2: row[26] || '',
+        mobileNumber2: row[27] || '',
+        // legacy/required fields for compatibility
+        vehicleNo: row[10] || '', // regNo
+        customerName: row[5] || '', // nameOfClient
+        area: row[2] || '', // city
+        vehicleMaker: row[7] || '', // make
+        companyName: row[28] || '',
+        companyBranch: row[29] || '',
+        companyContact: row[30] || '',
+        companyContactPerson: row[31] || '',
+        agencyName: row[32] || '',
+        agencyContact: row[33] || '',
+        group: row[34] ? String(row[34]).split(',')[0].trim() : '',
+      }));
+      
+      processedRows.push(...processedChunk);
+      
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+      }
+    }
+
+    return processedRows;
   } catch (error) {
     throw new Error('Error parsing Excel file: ' + error.message);
   }
@@ -216,24 +242,20 @@ router.get('/app', auth, async (req, res) => {
 // @access  Private (Super Admin only)
 router.post('/upload-data', [auth, requireSuperAdmin], async (req, res) => {
   try {
-    // console.log('Upload-data route called');
-    // console.log('Request body size:', JSON.stringify(req.body).length, 'characters');
-    
     const { fileName, vehicles, totalProcessed, isChunk, chunkIndex, totalChunks } = req.body;
-
-    // console.log('Received data:', {
-    //   fileName,
-    //   vehiclesCount: vehicles?.length || 0,
-    //   totalProcessed,
-    //   isChunk,
-    //   chunkIndex,
-    //   totalChunks
-    // });
 
     if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'No valid vehicles data provided'
+      });
+    }
+
+    // Limit the number of vehicles per request to prevent memory issues
+    if (vehicles.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Too many vehicles in single request. Please split into smaller chunks.'
       });
     }
 
@@ -284,19 +306,29 @@ router.post('/upload-data', [auth, requireSuperAdmin], async (req, res) => {
       batchId: batch._id
     }));
 
-    // Insert valid vehicles with batchId
-    const insertedVehicles = await Vehicle.insertMany(vehiclesWithBatch);
+    // Insert valid vehicles with batchId in smaller batches
+    const BATCH_SIZE = 100; // Process 100 vehicles at a time
+    let totalInserted = 0;
+    
+    for (let i = 0; i < vehiclesWithBatch.length; i += BATCH_SIZE) {
+      const chunk = vehiclesWithBatch.slice(i, i + BATCH_SIZE);
+      const insertedVehicles = await Vehicle.insertMany(chunk);
+      totalInserted += insertedVehicles.length;
+      
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+      }
+    }
 
     res.json({
       success: true,
-      message: `Successfully uploaded ${insertedVehicles.length} vehicles`,
-      uploaded: insertedVehicles.length,
+      message: `Successfully uploaded ${totalInserted} vehicles`,
+      uploaded: totalInserted,
       batchId: batch._id
     });
 
   } catch (error) {
-    console.error('Upload vehicles data error:', error);
-    
     // Check if it's a request entity too large error
     if (error.message && error.message.includes('entity too large')) {
       return res.status(413).json({
