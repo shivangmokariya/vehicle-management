@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { useForm } from 'react-hook-form'
 import { vehiclesAPI } from '../services/api'
 import toast from 'react-hot-toast'
+import FileDataHandler from '../components/FileDataHandler'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -25,7 +26,6 @@ export default function Vehicles() {
   const [editingVehicle, setEditingVehicle] = useState(null)
   const [viewingVehicle, setViewingVehicle] = useState(null)
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
-  const [uploadFile, setUploadFile] = useState(null)
   const [uploadProgress, setUploadProgress] = useState(null)
   const [page, setPage] = useState(1)
   const queryClient = useQueryClient()
@@ -39,6 +39,21 @@ export default function Vehicles() {
   const [renameValue, setRenameValue] = useState('')
   const [deletingBatchId, setDeletingBatchId] = useState(null);
   const [confirmDeleteBatchId, setConfirmDeleteBatchId] = useState(null);
+  const [editCompanyBatchId, setEditCompanyBatchId] = useState(null);
+  const [editCompanyValue, setEditCompanyValue] = useState('');
+
+  // Batch-level search/filter state
+  const [batchFilters, setBatchFilters] = useState({});
+
+  // Filtered batches based on top search bar
+  const filteredBatches = batches.filter(batch => {
+    const search = searchTerm.trim().toLowerCase();
+    if (!search) return true;
+    return (
+      (batch.fileName && batch.fileName.toLowerCase().includes(search)) ||
+      (batch.companyName && batch.companyName.toLowerCase().includes(search))
+    );
+  });
 
   // Fetch batches function
   const fetchBatches = () => {
@@ -56,10 +71,10 @@ export default function Vehicles() {
     fetchBatches()
   }, [])
 
-  // Fetch vehicles for a batch and page
-  const fetchBatchVehicles = (batchId, page = 1) => {
+  // Update fetchBatchVehicles to accept filters
+  const fetchBatchVehicles = (batchId, page = 1, filters = {}) => {
     setBatchLoading(prev => ({ ...prev, [batchId]: true }))
-    vehiclesAPI.getBatchVehicles(batchId, { page, limit: 10 })
+    vehiclesAPI.getBatchVehicles(batchId, { page, limit: 10, ...filters })
       .then(res => {
         setBatchVehicles(prev => ({ ...prev, [batchId]: res.data }))
         setBatchPages(prev => ({ ...prev, [batchId]: page }))
@@ -114,6 +129,20 @@ export default function Vehicles() {
     }
   };
 
+  const handleEditCompany = (batchId, currentCompany) => {
+    setEditCompanyBatchId(batchId);
+    setEditCompanyValue(currentCompany);
+  };
+  const handleEditCompanySave = (batchId) => {
+    vehiclesAPI.updateBatchCompany(batchId, editCompanyValue)
+      .then(res => {
+        setBatches(batches.map(b => b._id === batchId ? { ...b, companyName: res.data.batch.companyName } : b))
+        setEditCompanyBatchId(null)
+        toast.success('Company name updated')
+      })
+      .catch(() => toast.error('Failed to update company name'))
+  };
+
   const { data: vehiclesData, isLoading } = useQuery(
     ['vehicles', searchTerm, selectedBranch, selectedArea, selectedMaker, page],
     () => vehiclesAPI.getVehicles({
@@ -125,18 +154,17 @@ export default function Vehicles() {
       limit: 15
     }).then(res => res.data)
   )
-console.log(vehiclesData,"<<<<<<vehiclesData")
-  const uploadMutation = useMutation(vehiclesAPI.uploadExcel, {
+// console.log(vehiclesData,"<<<<<<vehiclesData")
+  const uploadMutation = useMutation(vehiclesAPI.uploadVehicleData, {
     onSuccess: (data) => {
       queryClient.invalidateQueries('vehicles')
       toast.success(`Successfully uploaded ${data.data.uploaded} vehicles`)
       setUploadModalOpen(false)
-      setUploadFile(null)
       setUploadProgress(null)
       fetchBatches() // Refresh batches after upload
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Failed to upload file')
+      toast.error(error.response?.data?.message || 'Failed to upload data')
       setUploadProgress(null)
     }
   })
@@ -250,35 +278,64 @@ console.log(vehiclesData,"<<<<<<vehiclesData")
     }
   }
 
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0]
-    if (file) {
-      if (
-        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        file.type === 'application/vnd.ms-excel' ||
-        file.type === 'text/csv' ||
-        file.name.endsWith('.xlsx') ||
-        file.name.endsWith('.xls') ||
-        file.name.endsWith('.csv')
-      ) {
-        setUploadFile(file)
-      } else {
-        toast.error('Please select a valid Excel or CSV file (.xlsx, .xls, .csv)')
+  const handleDataParsed = async (data) => {
+    setUploadProgress('Uploading data to server...')
+    
+    // Check if data is too large (more than 10MB when stringified)
+    const dataSize = JSON.stringify(data.validVehicles).length;
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    
+    if (dataSize > maxSize) {
+      // Split data into chunks
+      const chunkSize = Math.ceil(data.validVehicles.length / Math.ceil(dataSize / maxSize));
+      const chunks = [];
+      
+      for (let i = 0; i < data.validVehicles.length; i += chunkSize) {
+        chunks.push(data.validVehicles.slice(i, i + chunkSize));
       }
+      
+      setUploadProgress(`Uploading ${chunks.length} chunks...`)
+      
+      try {
+        let totalUploaded = 0;
+        for (let i = 0; i < chunks.length; i++) {
+          setUploadProgress(`Uploading chunk ${i + 1} of ${chunks.length}...`)
+          
+          const response = await vehiclesAPI.uploadVehicleData({
+            fileName: data.fileName,
+            vehicles: chunks[i],
+            totalProcessed: data.totalProcessed,
+            isChunk: true,
+            chunkIndex: i,
+            totalChunks: chunks.length
+          });
+          
+          totalUploaded += response.data.uploaded;
+        }
+        
+        setUploadProgress(`Successfully uploaded ${totalUploaded} vehicles`)
+        queryClient.invalidateQueries('vehicles')
+        toast.success(`Successfully uploaded ${totalUploaded} vehicles`)
+        setUploadModalOpen(false)
+        setUploadProgress(null)
+        fetchBatches()
+        
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Failed to upload data')
+        setUploadProgress(null)
+      }
+    } else {
+      // Normal upload for smaller datasets
+      uploadMutation.mutate({
+        fileName: data.fileName,
+        vehicles: data.validVehicles,
+        totalProcessed: data.totalProcessed
+      })
     }
   }
 
-  const handleUploadSubmit = () => {
-    if (!uploadFile) {
-      toast.error('Please select a file to upload')
-      return
-    }
-
-    const formData = new FormData()
-    formData.append('excelFile', uploadFile)
-
-    setUploadProgress('Uploading...')
-    uploadMutation.mutate(formData)
+  const handleDataError = (error) => {
+    toast.error(error)
   }
 
   const closeModal = () => {
@@ -290,12 +347,66 @@ console.log(vehiclesData,"<<<<<<vehiclesData")
 
   const closeUploadModal = () => {
     setUploadModalOpen(false)
-    setUploadFile(null)
     setUploadProgress(null)
   }
 
   // Add debug log before return
-  console.log('BATCHES STATE:', batches);
+  // console.log('BATCHES STATE:', batches);
+
+  // Handler for filter changes inside a batch
+  const handleBatchFilterChange = (batchId, field, value) => {
+    setBatchFilters(prev => ({
+      ...prev,
+      [batchId]: {
+        ...prev[batchId],
+        [field]: value
+      }
+    }));
+  };
+
+  // Fetch vehicles for expanded batch when its filters change
+  useEffect(() => {
+    if (!expandedBatch) return;
+    fetchBatchVehicles(expandedBatch, 1, batchFilters[expandedBatch] || {});
+  }, [batchFilters, expandedBatch]);
+
+  useEffect(() => {
+    if (!searchTerm) return;
+    // For each batch, fetch vehicles with the search term and score the best match
+    (async () => {
+      const search = searchTerm.trim().toLowerCase();
+      const fields = ['vehicleNo', 'customerName', 'branch', 'area', 'vehicleMaker'];
+      const batchResults = await Promise.all(batches.map(async (batch) => {
+        const res = await vehiclesAPI.getBatchVehicles(batch._id, { search: searchTerm, limit: 10 });
+        let batchScore = 0;
+        if (res.data.vehicles && res.data.vehicles.length > 0) {
+          for (const v of res.data.vehicles) {
+            for (const field of fields) {
+              const value = (v[field] || '').toLowerCase();
+              if (value === search) {
+                batchScore = Math.max(batchScore, 3);
+              } else if (value.startsWith(search)) {
+                batchScore = Math.max(batchScore, 2);
+              } else if (value.includes(search)) {
+                batchScore = Math.max(batchScore, 1);
+              }
+            }
+          }
+        }
+        return { batchId: batch._id, score: batchScore, vehicles: res.data };
+      }));
+      // Find the batch with the highest score
+      const best = batchResults.reduce((acc, cur) => {
+        if (cur.score > acc.score) return cur;
+        return acc;
+      }, { score: 0 });
+      // console.log('Batch search debug:', batchResults, 'Best:', best);
+      if (best && best.score > 0) {
+        setExpandedBatch(best.batchId);
+        setBatchVehicles(prev => ({ ...prev, [best.batchId]: best.vehicles }));
+      }
+    })();
+  }, [searchTerm, batches]);
 
   return (
     <div>
@@ -419,7 +530,23 @@ console.log(vehiclesData,"<<<<<<vehiclesData")
                       <button className="ml-2 text-blue-600" title="Rename" onClick={e => { e.stopPropagation(); handleRename(batch._id, batch.fileName) }}><PencilIcon className="h-4 w-4" /></button>
                     </>
                   )}
-                  <span className="ml-6 text-gray-600">Company: <span className="font-medium">{batch.companyName}</span></span>
+                  <span className="ml-6 text-gray-600">Company: {editCompanyBatchId === batch._id ? (
+                    <>
+                      <input
+                        className="input-field w-32"
+                        value={editCompanyValue}
+                        onChange={e => setEditCompanyValue(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      <button className="ml-2 text-green-600" onClick={e => { e.stopPropagation(); handleEditCompanySave(batch._id) }}><CheckIcon className="h-4 w-4" /></button>
+                      <button className="ml-1 text-gray-500" onClick={e => { e.stopPropagation(); setEditCompanyBatchId(null) }}><XMarkIcon className="h-4 w-4" /></button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium">{batch.companyName}</span>
+                      <button className="ml-2 text-blue-600" title="Edit Company" onClick={e => { e.stopPropagation(); handleEditCompany(batch._id, batch.companyName) }}><PencilIcon className="h-4 w-4" /></button>
+                    </>
+                  )}</span>
                   <span className="ml-6 text-gray-600">Uploaded: <span className="font-medium">{new Date(batch.uploadDate).toLocaleString()}</span></span>
                   <button
                     className="ml-6 text-red-600 hover:text-red-800 transition duration-150"
@@ -434,6 +561,45 @@ console.log(vehiclesData,"<<<<<<vehiclesData")
               {/* Accordion Content */}
               {expandedBatch === batch._id && (
                 <div className="p-4 bg-white">
+                  {/* Batch-level filters */}
+                  <div className="mb-4 grid grid-cols-1 sm:grid-cols-5 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Vehicle No"
+                      value={batchFilters[batch._id]?.vehicleNo || ''}
+                      onChange={e => handleBatchFilterChange(batch._id, 'vehicleNo', e.target.value)}
+                      className="input-field"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Customer Name"
+                      value={batchFilters[batch._id]?.customerName || ''}
+                      onChange={e => handleBatchFilterChange(batch._id, 'customerName', e.target.value)}
+                      className="input-field"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Branch"
+                      value={batchFilters[batch._id]?.branch || ''}
+                      onChange={e => handleBatchFilterChange(batch._id, 'branch', e.target.value)}
+                      className="input-field"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Area"
+                      value={batchFilters[batch._id]?.area || ''}
+                      onChange={e => handleBatchFilterChange(batch._id, 'area', e.target.value)}
+                      className="input-field"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Vehicle Maker"
+                      value={batchFilters[batch._id]?.vehicleMaker || ''}
+                      onChange={e => handleBatchFilterChange(batch._id, 'vehicleMaker', e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                  {/* End batch-level filters */}
                   {batchLoading[batch._id] ? (
                     <div className="text-center py-8">Loading vehicles...</div>
                   ) : batchVehicles[batch._id]?.vehicles?.length === 0 ? (
@@ -635,31 +801,12 @@ console.log(vehiclesData,"<<<<<<vehiclesData")
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Excel File</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Excel/CSV File</h3>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Select Excel File
-                  </label>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    name="excelFile"
-                    onChange={handleFileUpload}
-                    className="input-field"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Only .xlsx, .xls, and .csv files are allowed
-                  </p>
-                </div>
-
-                {uploadFile && (
-                  <div className="p-3 bg-green-50 rounded-lg">
-                    <p className="text-sm text-green-800">
-                      Selected: {uploadFile.name}
-                    </p>
-                  </div>
-                )}
+                <FileDataHandler 
+                  onDataParsed={handleDataParsed}
+                  onError={handleDataError}
+                />
 
                 {uploadProgress && (
                   <div className="p-3 bg-blue-50 rounded-lg">
@@ -673,17 +820,6 @@ console.log(vehiclesData,"<<<<<<vehiclesData")
                     className="btn-secondary"
                   >
                     Cancel
-                  </button>
-                  <button
-                    onClick={handleUploadSubmit}
-                    disabled={!uploadFile || uploadMutation.isLoading}
-                    className="btn-primary"
-                  >
-                    {uploadMutation.isLoading ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    ) : (
-                      'Upload'
-                    )}
                   </button>
                 </div>
               </div>

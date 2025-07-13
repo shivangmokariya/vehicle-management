@@ -8,6 +8,7 @@ const Vehicle = require('../models/Vehicle');
 const Batch = require('../models/Batch');
 const { auth, requireSuperAdmin } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
+const { uploadFileToDrive } = require('../utils/googleDrive');
 
 const router = express.Router();
 
@@ -210,10 +211,111 @@ router.get('/app', auth, async (req, res) => {
   }
 });
 
-// @route   POST /api/vehicles/upload
-// @desc    Upload Excel file and bulk insert vehicle data
+// @route   POST /api/vehicles/upload-data
+// @desc    Upload vehicle data from frontend (no file upload)
 // @access  Private (Super Admin only)
-router.post('/upload', [auth, requireSuperAdmin, upload.single('excelFile')], async (req, res) => {
+router.post('/upload-data', [auth, requireSuperAdmin], async (req, res) => {
+  try {
+    // console.log('Upload-data route called');
+    // console.log('Request body size:', JSON.stringify(req.body).length, 'characters');
+    
+    const { fileName, vehicles, totalProcessed, isChunk, chunkIndex, totalChunks } = req.body;
+
+    // console.log('Received data:', {
+    //   fileName,
+    //   vehiclesCount: vehicles?.length || 0,
+    //   totalProcessed,
+    //   isChunk,
+    //   chunkIndex,
+    //   totalChunks
+    // });
+
+    if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid vehicles data provided'
+      });
+    }
+
+    // Add uploadedBy to each vehicle
+    const vehiclesWithUser = vehicles.map(vehicle => ({
+      ...vehicle,
+      uploadedBy: req.user._id
+    }));
+
+    let batch;
+    
+    if (isChunk && chunkIndex === 0) {
+      // Create a new batch for the first chunk
+      batch = new Batch({
+        fileName: fileName || 'Unknown File',
+        companyName: vehiclesWithUser[0]?.companyName || 'Unknown',
+        uploadDate: new Date(),
+        // No Google Drive upload since we're not uploading files
+      });
+      await batch.save();
+    } else if (isChunk) {
+      // For subsequent chunks, find the existing batch by fileName and recent upload
+      batch = await Batch.findOne({
+        fileName: fileName,
+        uploadDate: { $gte: new Date(Date.now() - 5 * 60 * 1000) } // Within last 5 minutes
+      }).sort({ uploadDate: -1 });
+      
+      if (!batch) {
+        return res.status(400).json({
+          success: false,
+          message: 'No active batch found for chunk upload'
+        });
+      }
+    } else {
+      // Create a new batch for non-chunked uploads
+      batch = new Batch({
+        fileName: fileName || 'Unknown File',
+        companyName: vehiclesWithUser[0]?.companyName || 'Unknown',
+        uploadDate: new Date(),
+        // No Google Drive upload since we're not uploading files
+      });
+      await batch.save();
+    }
+
+    // Add batchId to each vehicle
+    const vehiclesWithBatch = vehiclesWithUser.map(vehicle => ({
+      ...vehicle,
+      batchId: batch._id
+    }));
+
+    // Insert valid vehicles with batchId
+    const insertedVehicles = await Vehicle.insertMany(vehiclesWithBatch);
+
+    res.json({
+      success: true,
+      message: `Successfully uploaded ${insertedVehicles.length} vehicles`,
+      uploaded: insertedVehicles.length,
+      batchId: batch._id
+    });
+
+  } catch (error) {
+    console.error('Upload vehicles data error:', error);
+    
+    // Check if it's a request entity too large error
+    if (error.message && error.message.includes('entity too large')) {
+      return res.status(413).json({
+        success: false,
+        message: 'Request payload too large. Please try with a smaller file or split the data into smaller chunks.'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error'
+    });
+  }
+});
+
+// @route   POST /api/vehicles/upload
+// @desc    Upload Excel file and bulk insert vehicle data (legacy route)
+// @access  Private (Super Admin only)
+router.post('/upload', [auth, requireSuperAdmin], async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -233,7 +335,6 @@ router.post('/upload', [auth, requireSuperAdmin, upload.single('excelFile')], as
 
     // Validate required fields
     const validVehicles = [];
-    const invalidVehicles = [];
     vehiclesData.forEach((vehicle, index) => {
       const requiredFields = ['vehicleNo', 'chassisNo', 'engineNo'];
       const missingFields = requiredFields.filter(field => !vehicle[field] || vehicle[field].toString().trim() === '');
@@ -242,27 +343,31 @@ router.post('/upload', [auth, requireSuperAdmin, upload.single('excelFile')], as
           ...vehicle,
           uploadedBy: req.user._id
         });
-      } else {
-        invalidVehicles.push({
-          row: index + 2, // +2 because Excel rows start from 1 and we have header
-          missingFields,
-          data: vehicle
-        });
       }
+      // Skip invalid vehicles silently
     });
     if (validVehicles.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No valid vehicles found in the Excel or CSV file',
-        invalidVehicles
+        message: 'No valid vehicles found in the Excel or CSV file'
       });
+    }
+
+    // Upload file to Google Drive
+    let driveFile = null;
+    try {
+      driveFile = await uploadFileToDrive(filePath, req.file.originalname, req.file.mimetype);
+    } catch (err) {
+      console.error('Google Drive upload failed:', err);
     }
 
     // Create a new batch
     const batch = new Batch({
       fileName: req.file.originalname,
       companyName: validVehicles[0]?.companyName || 'Unknown',
-      uploadDate: new Date()
+      uploadDate: new Date(),
+      driveFileId: driveFile?.id,
+      driveFileLink: driveFile?.webViewLink,
     });
     await batch.save();
 
@@ -275,13 +380,15 @@ router.post('/upload', [auth, requireSuperAdmin, upload.single('excelFile')], as
     // Insert valid vehicles with batchId
     const insertedVehicles = await Vehicle.insertMany(vehiclesWithBatch);
 
+    // Optionally, remove the local file after upload
+    try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+
     res.json({
       success: true,
       message: `Successfully uploaded ${insertedVehicles.length} vehicles`,
       uploaded: insertedVehicles.length,
-      invalid: invalidVehicles.length,
-      invalidVehicles: invalidVehicles.length > 0 ? invalidVehicles : undefined
-      , batchId: batch._id
+      batchId: batch._id,
+      driveFileLink: driveFile?.webViewLink
     });
 
   } catch (error) {
@@ -425,13 +532,31 @@ router.get('/batches', [auth, requireSuperAdmin], async (req, res) => {
 // @access  Private (Super Admin only)
 router.get('/batches/:batchId/vehicles', [auth, requireSuperAdmin], async (req, res) => {
   try {
-    const { page = 1, limit = 15 } = req.query;
+    const { page = 1, limit = 15, search, vehicleNo, customerName, branch, area, vehicleMaker } = req.query;
     const { batchId } = req.params;
-    const vehicles = await Vehicle.find({ batchId })
+    const query = { batchId };
+
+    // Search across multiple fields
+    if (search) {
+      query.$or = [
+        { vehicleNo: { $regex: search, $options: 'i' } },
+        { customerName: { $regex: search, $options: 'i' } },
+        { branch: { $regex: search, $options: 'i' } },
+        { area: { $regex: search, $options: 'i' } },
+        { vehicleMaker: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (vehicleNo) query.vehicleNo = { $regex: vehicleNo, $options: 'i' };
+    if (customerName) query.customerName = { $regex: customerName, $options: 'i' };
+    if (branch) query.branch = { $regex: branch, $options: 'i' };
+    if (area) query.area = { $regex: area, $options: 'i' };
+    if (vehicleMaker) query.vehicleMaker = { $regex: vehicleMaker, $options: 'i' };
+
+    const vehicles = await Vehicle.find(query)
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
-    const total = await Vehicle.countDocuments({ batchId });
+    const total = await Vehicle.countDocuments(query);
     res.json({
       success: true,
       vehicles,
@@ -453,6 +578,22 @@ router.put('/batches/:batchId/rename', [auth, requireSuperAdmin], async (req, re
     const { fileName } = req.body;
     if (!fileName) return res.status(400).json({ success: false, message: 'fileName is required' });
     const batch = await Batch.findByIdAndUpdate(batchId, { fileName }, { new: true });
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    res.json({ success: true, batch });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   PUT /api/vehicles/batches/:batchId/company
+// @desc    Update company name for a batch
+// @access  Private (Super Admin only)
+router.put('/batches/:batchId/company', [auth, requireSuperAdmin], async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const { companyName } = req.body;
+    if (!companyName) return res.status(400).json({ success: false, message: 'companyName is required' });
+    const batch = await Batch.findByIdAndUpdate(batchId, { companyName }, { new: true });
     if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
     res.json({ success: true, batch });
   } catch (error) {

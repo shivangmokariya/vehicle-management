@@ -79,9 +79,9 @@ const authGoogle = new google.auth.GoogleAuth({
 
 const drive = google.drive({ version: 'v3', auth: authGoogle });
 
-console.log('✅  Google Drive setup completed with env credentials');
+// console.log('✅  Google Drive setup completed with env credentials');
 
-console.log('Google Drive setup completed successfully');
+// console.log('Google Drive setup completed successfully');
 
 // Helper function to upload file to Google Drive
 const uploadToGoogleDrive = async (filePath, originalName) => {
@@ -108,7 +108,7 @@ const uploadToGoogleDrive = async (filePath, originalName) => {
       body: fs.createReadStream(filePath),
     };
     
-    console.log('Uploading to Google Drive:', { filePath, originalName, mimeType });
+    // console.log('Uploading to Google Drive:', { filePath, originalName, mimeType });
     
     const response = await drive.files.create({
       resource: fileMetadata,
@@ -116,7 +116,7 @@ const uploadToGoogleDrive = async (filePath, originalName) => {
       fields: 'id',
     });
     
-    console.log('Google Drive upload response:', response.data);
+    // console.log('Google Drive upload response:', response.data);
     
     // Make file public
     await drive.permissions.create({

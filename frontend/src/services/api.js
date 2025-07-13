@@ -51,11 +51,13 @@ export const vehiclesAPI = {
   updateVehicle: (id, vehicleData) => api.put(`/vehicles/${id}`, vehicleData),
   deleteVehicle: (id) => api.delete(`/vehicles/${id}`),
   uploadExcel: (formData) => api.post('/vehicles/upload', formData),
+  uploadVehicleData: (data) => api.post('/vehicles/upload-data', data),
   getStats: () => api.get('/vehicles/stats/summary'),
   getGroups: () => api.get('/vehicles/groups'),
   getBatches: () => api.get('/vehicles/batches'),
   getBatchVehicles: (batchId, params) => api.get(`/vehicles/batches/${batchId}/vehicles`, { params }),
   renameBatch: (batchId, fileName) => api.put(`/vehicles/batches/${batchId}/rename`, { fileName }),
+  updateBatchCompany: (batchId, companyName) => api.put(`/vehicles/batches/${batchId}/company`, { companyName }),
   getVehicleTypes: () => api.get('/vehicles/vehicle-types'),
   deleteBatch: (batchId) => api.delete(`/vehicles/batches/${batchId}`),
 }
