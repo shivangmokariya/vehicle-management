@@ -64,9 +64,11 @@ const gdriveCredentials = {
   universe_domain: process.env.GOOGLE_CLOUD_UNIVERSE_DOMAIN,
 };
 
-// Fail fast if required vars are missing
-if (!gdriveCredentials.private_key || !gdriveCredentials.client_email) {
-  process.exit(1);
+// Check if Google Drive credentials are available
+const hasGoogleDriveCredentials = gdriveCredentials.private_key && gdriveCredentials.client_email;
+
+if (!hasGoogleDriveCredentials) {
+  console.warn('Google Drive credentials not found. Profile image uploads will be disabled.');
 }
 
 const authGoogle = new google.auth.GoogleAuth({
@@ -211,9 +213,21 @@ router.post('/', [
     });
 
   } catch (error) {
+    console.error('Error creating user:', error);
+    
+    // Handle specific errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field === 'username' ? 'Username' : 'Employee ID'} already exists`
+      });
+    }
+    
     res.status(500).json({ 
       success: false,
-      message: 'Server error' 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -438,6 +452,14 @@ router.post('/:id/profile-image', [auth, requireSuperAdmin, upload.single('profi
       return res.status(400).json({
         success: false,
         message: 'Please upload an image file'
+      });
+    }
+
+    // Check if Google Drive is available
+    if (!hasGoogleDriveCredentials) {
+      return res.status(503).json({
+        success: false,
+        message: 'Profile image upload is currently unavailable. Google Drive credentials not configured.'
       });
     }
 

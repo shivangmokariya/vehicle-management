@@ -1,6 +1,7 @@
 // Environment configuration
 export const config = {
   API_BASE_URL: 'https://vehicle-management-z4pv.onrender.com',
+//   API_BASE_URL: 'http://localhost:5000',
   // Upload configuration
   UPLOAD_CHUNK_SIZE: 1000, // Number of vehicles per chunk
   UPLOAD_DELAY_MS: 100,   // Delay between chunks in milliseconds
