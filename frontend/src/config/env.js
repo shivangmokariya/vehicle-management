@@ -6,6 +6,9 @@ const getApiBaseUrl = () => {
 
 export const config = {
   API_BASE_URL: getApiBaseUrl(),
+  // Upload configuration
+  UPLOAD_CHUNK_SIZE: 100, // Number of vehicles per chunk
+  UPLOAD_DELAY_MS: 500,   // Delay between chunks in milliseconds
 }
 
 // Debug logging

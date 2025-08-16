@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { useForm } from 'react-hook-form'
 import { vehiclesAPI } from '../services/api'
+import { config } from '../config/env.js'
 import toast from 'react-hot-toast'
 import FileDataHandler from '../components/FileDataHandler'
 import {
@@ -27,6 +28,7 @@ export default function Vehicles() {
   const [viewingVehicle, setViewingVehicle] = useState(null)
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(null)
+  const [uploadProgressPercent, setUploadProgressPercent] = useState(0)
   const [page, setPage] = useState(1)
   const queryClient = useQueryClient()
   const [expandedBatch, setExpandedBatch] = useState(null)
@@ -280,42 +282,64 @@ export default function Vehicles() {
 
   const handleDataParsed = async (data) => {
     setUploadProgress('Uploading data to server...')
+    setUploadProgressPercent(0)
     
-    // Check if data is too large (more than 10MB when stringified)
-    const dataSize = JSON.stringify(data.validVehicles).length;
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    // Always chunk data to avoid "too many vehicles" error
+    // Use configurable chunk size
+    const CHUNK_SIZE = config.UPLOAD_CHUNK_SIZE;
+    const UPLOAD_DELAY = config.UPLOAD_DELAY_MS;
+    const vehicles = data.validVehicles;
     
-    if (dataSize > maxSize) {
+    if (vehicles.length > CHUNK_SIZE) {
       // Split data into chunks
-      const chunkSize = Math.ceil(data.validVehicles.length / Math.ceil(dataSize / maxSize));
       const chunks = [];
-      
-      for (let i = 0; i < data.validVehicles.length; i += chunkSize) {
-        chunks.push(data.validVehicles.slice(i, i + chunkSize));
+      for (let i = 0; i < vehicles.length; i += CHUNK_SIZE) {
+        chunks.push(vehicles.slice(i, i + CHUNK_SIZE));
       }
       
-      setUploadProgress(`Uploading ${chunks.length} chunks...`)
+      setUploadProgress(`Uploading ${chunks.length} chunks of ${CHUNK_SIZE} vehicles each...`)
       
       try {
         let totalUploaded = 0;
+        let failedChunks = 0;
+        
         for (let i = 0; i < chunks.length; i++) {
-          setUploadProgress(`Uploading chunk ${i + 1} of ${chunks.length}...`)
+          setUploadProgress(`Uploading chunk ${i + 1} of ${chunks.length} (${chunks[i].length} vehicles)...`)
+          setUploadProgressPercent(((i + 1) / chunks.length) * 100)
           
-          const response = await vehiclesAPI.uploadVehicleData({
-            fileName: data.fileName,
-            vehicles: chunks[i],
-            totalProcessed: data.totalProcessed,
-            isChunk: true,
-            chunkIndex: i,
-            totalChunks: chunks.length
-          });
-          
-          totalUploaded += response.data.uploaded;
+          try {
+            const response = await vehiclesAPI.uploadVehicleData({
+              fileName: data.fileName,
+              vehicles: chunks[i],
+              totalProcessed: data.totalProcessed,
+              isChunk: true,
+              chunkIndex: i,
+              totalChunks: chunks.length
+            });
+            
+            totalUploaded += response.data.uploaded || chunks[i].length;
+            
+            // Add a configurable delay between chunks to avoid overwhelming the server
+            if (i < chunks.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, UPLOAD_DELAY));
+            }
+            
+          } catch (chunkError) {
+            failedChunks++;
+            console.error(`Chunk ${i + 1} failed:`, chunkError);
+            // Continue with next chunk instead of stopping completely
+          }
         }
         
-        setUploadProgress(`Successfully uploaded ${totalUploaded} vehicles`)
+        if (failedChunks > 0) {
+          setUploadProgress(`Upload completed with ${failedChunks} failed chunks. Total uploaded: ${totalUploaded}`)
+          toast.success(`Upload completed with ${failedChunks} failed chunks. Total uploaded: ${totalUploaded} vehicles`)
+        } else {
+          setUploadProgress(`Successfully uploaded ${totalUploaded} vehicles`)
+          toast.success(`Successfully uploaded ${totalUploaded} vehicles`)
+        }
+        
         queryClient.invalidateQueries('vehicles')
-        toast.success(`Successfully uploaded ${totalUploaded} vehicles`)
         setUploadModalOpen(false)
         setUploadProgress(null)
         fetchBatches()
@@ -348,6 +372,7 @@ export default function Vehicles() {
   const closeUploadModal = () => {
     setUploadModalOpen(false)
     setUploadProgress(null)
+    setUploadProgressPercent(0)
   }
 
   // Handler for filter changes inside a batch
@@ -806,7 +831,15 @@ export default function Vehicles() {
 
                 {uploadProgress && (
                   <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-800">{uploadProgress}</p>
+                    <p className="text-sm text-blue-800 mb-2">{uploadProgress}</p>
+                    {uploadProgressPercent > 0 && (
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                          style={{ width: `${uploadProgressPercent}%` }}
+                        ></div>
+                      </div>
+                    )}
                   </div>
                 )}
 
