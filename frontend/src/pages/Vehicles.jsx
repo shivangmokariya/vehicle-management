@@ -5,6 +5,7 @@ import { vehiclesAPI } from '../services/api'
 import { config } from '../config/env'
 import toast from 'react-hot-toast'
 import FileDataHandler from '../components/FileDataHandler'
+import DemoFileDownload from '../components/DemoFileDownload'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -440,6 +441,7 @@ export default function Vehicles() {
             </p>
           </div>
           <div className="flex space-x-3">
+            <DemoFileDownload />
             <button
               onClick={() => setUploadModalOpen(true)}
               className="btn-primary flex items-center"
