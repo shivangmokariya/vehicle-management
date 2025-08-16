@@ -1,8 +1,14 @@
 import axios from 'axios'
+import { config } from '../config/env.js'
+
+// Debug logging
+console.log('API service config:', config)
+console.log('API_BASE_URL from config:', config.API_BASE_URL)
+console.log('Final baseURL:', config.API_BASE_URL + '/api')
 
 // Create axios instance
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL + '/api',
+  baseURL: config.API_BASE_URL + '/api',
 })
 
 // Add auth token to requests
