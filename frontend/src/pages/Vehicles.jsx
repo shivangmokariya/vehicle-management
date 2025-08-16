@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { useForm } from 'react-hook-form'
 import { vehiclesAPI } from '../services/api'
-import { config } from '../config/env.js'
+import { config } from '../config/env'
 import toast from 'react-hot-toast'
 import FileDataHandler from '../components/FileDataHandler'
 import {

@@ -1,10 +1,5 @@
 import axios from 'axios'
-import { config } from '../config/env.js'
-
-// Debug logging
-console.log('API service config:', config)
-console.log('API_BASE_URL from config:', config.API_BASE_URL)
-console.log('Final baseURL:', config.API_BASE_URL + '/api')
+import { config } from '../config/env'
 
 // Create axios instance
 const api = axios.create({
